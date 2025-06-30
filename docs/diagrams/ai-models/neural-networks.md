@@ -581,20 +581,20 @@ graph TB
 graph LR
     subgraph "Encoder"
         A[Input x] --> B[Encoder Network]
-        B --> C[μ (Mean)]
-        B --> D[σ (Std Dev)]
+        B --> C[Mean Parameter]
+        B --> D[Std Dev Parameter]
     end
 
     subgraph "Latent Space"
         C --> E[Sampling]
         D --> E
-        F[ε ~ N(0,1)] --> E
+        F[Random Noise] --> E
         E --> G[Latent Vector z]
     end
 
     subgraph "Decoder"
         G --> H[Decoder Network]
-        H --> I[Reconstructed x']
+        H --> I[Reconstructed Output]
     end
 
     subgraph "Loss Computation"
@@ -623,12 +623,12 @@ graph LR
 graph TB
     subgraph "Generator"
         A[Random Noise z] --> B[Generator Network G]
-        B --> C[Fake Data x_fake]
+        B --> C[Fake Data]
     end
 
     subgraph "Discriminator"
         C --> D[Discriminator Network D]
-        E[Real Data x_real] --> D
+        E[Real Data] --> D
         D --> F[Probability Real/Fake]
     end
 
@@ -644,7 +644,7 @@ graph TB
     end
 
     subgraph "Objective Functions"
-        L[min_G max_D V(D,G)] --> M[Nash Equilibrium]
+        L[Minimax Game] --> M[Nash Equilibrium]
         M --> N[Optimal Solution]
     end
 
