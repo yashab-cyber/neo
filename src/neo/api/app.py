@@ -2,12 +2,18 @@ from fastapi import FastAPI, Request, status, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from .routers import system, commands, ai, files, tasks, security, metrics, websocket, auth, documentation
+from .routers import system, commands, ai, files, tasks, security, metrics, websocket, auth, documentation, knowledge
+from .routers import cognitive
 from neo.config import settings
 from .middleware import RequestContextMiddleware
 from .errors import neo_error_handler, unhandled_error_handler, NEOError
 from .responses import error_response
 from neo.utils.logging import configure_logging
+import time
+from contextlib import asynccontextmanager
+from neo.db import Base, engine
+
+_app_start_time = time.time()
 
 
 def api_key_auth(request: Request):
@@ -17,9 +23,31 @@ def api_key_auth(request: Request):
     return True
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # pragma: no cover
+    # startup
+    try:
+        from neo.services.command_queue import queue
+        await queue.start()
+    except Exception:
+        pass
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception:
+        pass
+    yield
+    # shutdown
+    try:
+        from neo.services.command_queue import queue
+        await queue.stop()
+    except Exception:
+        pass
+
+
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title=settings.app_name, version=settings.version)
+    app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -45,6 +73,31 @@ def create_app() -> FastAPI:
     app.include_router(metrics.router, prefix="/api/v1", tags=["metrics"], dependencies=deps)
     app.include_router(websocket.router, prefix="/api/v1", tags=["ws"], dependencies=deps)
     app.include_router(documentation.router, prefix="/api/v1", tags=["documentation"], dependencies=deps)
+    app.include_router(cognitive.router, prefix="/api/v1", tags=["cognitive"], dependencies=deps)
+    app.include_router(knowledge.router, prefix="/api/v1", tags=["knowledge"], dependencies=deps)
+
+    # Public root & health endpoints ---------------------------------
+    @app.get("/")
+    async def root():  # pragma: no cover - simple informational endpoint
+        uptime_s = int(time.time() - _app_start_time)
+        return {
+            "app": settings.app_name,
+            "version": settings.version,
+            "message": "NEO API root. See /docs for interactive API, /api/v1/status for system status (auth required).",
+            "uptime_seconds": uptime_s,
+        }
+
+    @app.get("/healthz")
+    async def healthz():
+        return {"status": "ok"}
+
+    @app.get("/readyz")
+    async def readyz():  # pragma: no cover
+        return {"ready": True, "version": settings.version}
+
+    @app.get("/favicon.ico")
+    async def favicon():  # pragma: no cover
+        return JSONResponse(status_code=204, content=None)
 
     # Custom exception handlers
     app.add_exception_handler(NEOError, neo_error_handler)
@@ -64,19 +117,5 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def fallback_handler(request: Request, exc: Exception):  # pragma: no cover
         return await unhandled_error_handler(request, exc)
-
-    # Startup / shutdown tasks (ensure command queue worker persists across requests)
-    try:  # pragma: no cover - infrastructure wiring
-        from neo.services.command_queue import queue
-
-        @app.on_event("startup")
-        async def _start_queue():
-            await queue.start()
-
-        @app.on_event("shutdown")
-        async def _stop_queue():
-            await queue.stop()
-    except Exception:  # pragma: no cover
-        pass
 
     return app

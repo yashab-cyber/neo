@@ -35,8 +35,18 @@ class Settings(BaseSettings):
     default_role: str = "user"
     role_scopes: dict[str, list[str]] = {
         "user": ["read:status", "read:chat"],
-        "admin": ["read:status", "read:chat", "write:commands", "manage:tasks", "manage:security"],
+        "admin": [
+            "read:status",
+            "read:chat",
+            "write:commands",
+            "manage:tasks",
+            "manage:security",
+            "manage:cognitive",
+            "read:knowledge",
+            "write:knowledge",
+        ],
     }
+    database_url: str = Field("sqlite+aiosqlite:///./data/app.db", description="SQLAlchemy database URL")
 
 
 @lru_cache
