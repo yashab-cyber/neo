@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  api:
+    build: .
+    environment:
+      - NEO_API_KEYS=devkey
+      - NEO_ENVIRONMENT=docker
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
