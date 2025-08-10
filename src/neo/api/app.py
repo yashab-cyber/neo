@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, status, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from .routers import system, commands, ai, files, tasks, security, metrics, websocket, auth, documentation, knowledge
+from .routers import system, commands, ai, files, tasks, security, metrics, websocket, auth, documentation, knowledge, memory
 from .routers import cognitive
 from neo.config import settings
 from .middleware import RequestContextMiddleware
@@ -12,6 +12,7 @@ from neo.utils.logging import configure_logging
 import time
 from contextlib import asynccontextmanager
 from neo.db import Base, engine
+from collections import defaultdict, deque
 
 _app_start_time = time.time()
 
@@ -48,6 +49,8 @@ async def lifespan(app: FastAPI):  # pragma: no cover
 def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
+    # Per-app rate limit buckets (IP -> deque[timestamps]) to isolate tests / instances
+    app.state.rate_limit_buckets = defaultdict(lambda: deque())  # type: ignore[attr-defined]
 
     app.add_middleware(
         CORSMiddleware,
@@ -75,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(documentation.router, prefix="/api/v1", tags=["documentation"], dependencies=deps)
     app.include_router(cognitive.router, prefix="/api/v1", tags=["cognitive"], dependencies=deps)
     app.include_router(knowledge.router, prefix="/api/v1", tags=["knowledge"], dependencies=deps)
+    app.include_router(memory.router, prefix="/api/v1", tags=["memory"], dependencies=deps)
 
     # Public root & health endpoints ---------------------------------
     @app.get("/")

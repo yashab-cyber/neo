@@ -43,6 +43,9 @@ dependencies = [
   "psutil>=5.9.0"
 ]
 
+[project.scripts]
+neo = "neo.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio", "httpx", "ruff", "mypy", "black", "isort"]
 

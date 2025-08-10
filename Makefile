@@ -1,7 +1,7 @@
 PY=python
 RUN=uvicorn neo.api.app:create_app --factory --host 0.0.0.0 --port 8000
 
-.PHONY: install dev run test lint type format docker compose
+.PHONY: install dev run test lint type format docker compose diagrams
 
 install:
 	$(PY) -m pip install -e .[dev]
@@ -14,6 +14,9 @@ run:
 
 test:
 	pytest -q
+
+diagrams:
+	$(PY) scripts/render_mermaid.py
 
 lint:
 	ruff check src/neo

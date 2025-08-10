@@ -44,6 +44,8 @@ class Settings(BaseSettings):
             "manage:cognitive",
             "read:knowledge",
             "write:knowledge",
+            "read:memory",
+            "write:memory",
         ],
     }
     database_url: str = Field("sqlite+aiosqlite:///./data/app.db", description="SQLAlchemy database URL")

@@ -331,3 +331,39 @@ cognitive_architecture:
       reliability: enabled
       security: enabled
       scalability: enabled
+  learning_data:
+    input_data:
+      raw: enabled
+      preprocessed: enabled
+      features: enabled
+      embeddings: enabled
+      sequences: enabled
+      structured: enabled
+    deep:
+      tensors: enabled
+      weights: enabled
+      gradients: enabled
+      activations: enabled
+      attention: enabled
+      transformer_blocks: enabled
+    neuro:
+      spikes: enabled
+      synapses: enabled
+      plasticity: enabled
+      memory_traces: enabled
+      neural_states: enabled
+      connectivity: enabled
+    recursive:
+      policies: enabled
+      value_functions: enabled
+      experience: enabled
+      meta_params: enabled
+      adaptation_histories: enabled
+      performance_metrics: enabled
+    storage:
+      versioning: enabled
+      checkpoints: enabled
+      compression: enabled
+      sharding: enabled
+      caching: enabled
+      lifecycle: enabled

@@ -3,7 +3,7 @@ from __future__ import annotations
 import time, uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 from neo.utils.logging import get_logger
 from neo.config import settings
 from fastapi import HTTPException, status
@@ -20,7 +20,12 @@ REQUEST_COUNT = Counter("neo_http_requests_total", "Total HTTP requests", ["meth
 REQUEST_LATENCY = Histogram("neo_http_request_duration_seconds", "Request latency", ["method", "path"])
 RATE_LIMIT_REJECTIONS = Counter("neo_rate_limit_rejections_total", "Total rate limited requests", ["client_ip"])
 
-_buckets: dict[str, deque[float]] = defaultdict(lambda: deque())
+# NOTE:
+# Buckets are now stored on the FastAPI app state (app.state.rate_limit_buckets)
+# to avoid cross-test interference when multiple TestClient instances are created.
+# The old module-level _buckets is preserved only as a fallback if middleware is
+# used outside the application factory (should not happen in normal flow).
+_fallback_buckets: dict[str, deque[float]] = defaultdict(lambda: deque())
 
 log = get_logger("middleware")
 
@@ -32,6 +37,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
         # Rate limiting (IP-based) with optional Redis backend
         client_ip = request.client.host if request.client else "unknown"
+        # Resolve bucket store (per-app if available)
+        bucket_store: dict[str, deque[float]] = getattr(
+            request.app.state, "rate_limit_buckets", _fallback_buckets
+        )
+        ratelimit_response: Response | None = None
         if settings.rate_limit_backend == "redis" and redis_async:
             try:
                 if not hasattr(request.app.state, "redis_rl"):
@@ -46,21 +56,29 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
             except Exception:  # pragma: no cover - fallback to memory
                 pass
-        if settings.rate_limit_backend == "memory" or not redis_async:
+        if ratelimit_response is None and (settings.rate_limit_backend == "memory" or not redis_async):
             window = settings.rate_limit_window_seconds
             limit = settings.rate_limit_per_minute
-            bucket = _buckets[client_ip]
+            bucket = bucket_store[client_ip]
             current = now()
             while bucket and current - bucket[0] > window:
                 bucket.popleft()
             if len(bucket) >= limit:
                 RATE_LIMIT_REJECTIONS.labels(client_ip).inc()
-                raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
-            bucket.append(current)
+                # Return a response instead of raising to avoid BaseHTTPMiddleware task group issues
+                ratelimit_response = JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={"detail": "Rate limit exceeded"},
+                )
+            else:
+                bucket.append(current)
         response: Response | None = None
         try:
-            with REQUEST_LATENCY.labels(request.method, request.url.path).time():
-                response = await call_next(request)
+            if ratelimit_response is not None:
+                response = ratelimit_response
+            else:
+                with REQUEST_LATENCY.labels(request.method, request.url.path).time():
+                    response = await call_next(request)
             return response
         finally:
             status_code = getattr(response, "status_code", 0)
